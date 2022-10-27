@@ -513,17 +513,25 @@ if [ "$ROOT_SOL" = 'magisk' ] || [ "$ROOT_SOL" = '' ]; then
     $SUDO cp "$MAGISK_PATH" "$MOUNT_DIR"/sbin/magisk.apk
     $SUDO tee -a "$MOUNT_DIR"/sbin/loadpolicy.sh <<EOF
 #!/system/bin/sh
+/system/bin/log -p w -t Magisk livepolicy start
+/system/bin/log -p w -t Magisk \$(/system/bin/stat -c 'cmd stat %N %s' /data/adb/magisk/busybox)
 mkdir -p /data/adb/magisk
 cp /sbin/* /data/adb/magisk/
 chmod -R 755 /data/adb/magisk
+/system/bin/log -p w -t Magisk restorecon /data/adb/magisk
 restorecon -R /data/adb/magisk
+/system/bin/log -p w -t Magisk \$(/system/bin/stat -c 'cmd stat %N %s' /data/adb/magisk/busybox)
 for module in \$(ls /data/adb/modules); do
     if ! [ -f "/data/adb/modules/\$module/disable" ] && [ -f "/data/adb/modules/\$module/sepolicy.rule" ]; then
         /sbin/magiskpolicy --live --apply "/data/adb/modules/\$module/sepolicy.rule"
     fi
 done
+/system/bin/log -p w -t Magisk livepolicy done
 EOF
-
+    $SUDO tee -a "$MOUNT_DIR"/sbin/stattest.sh <<EOF
+#!/system/bin/sh
+/system/bin/log -p w -t Magisk \$(/system/bin/stat -c 'cmd stat %N %s' /data/adb/magisk/busybox)
+EOF
     $SUDO find "$MOUNT_DIR"/sbin -type f -exec chmod 0755 {} \;
     $SUDO find "$MOUNT_DIR"/sbin -type f -exec chown root:root {} \;
     $SUDO find "$MOUNT_DIR"/sbin -type f -exec setfattr -n security.selinux -v "u:object_r:system_file:s0" {} \; || abort
@@ -543,6 +551,7 @@ on post-fs-data
     mount tmpfs tmpfs /dev/$TMP_PATH mode=0755
     copy /sbin/magisk64 /dev/$TMP_PATH/magisk64
     chmod 0755 /dev/$TMP_PATH/magisk64
+    start STAT_TEST
     symlink ./magisk64 /dev/$TMP_PATH/magisk
     symlink ./magisk64 /dev/$TMP_PATH/su
     symlink ./magisk64 /dev/$TMP_PATH/resetprop
@@ -552,16 +561,22 @@ on post-fs-data
     chmod 0755 /dev/$TMP_PATH/magiskinit
     copy /sbin/magiskpolicy /dev/$TMP_PATH/magiskpolicy
     chmod 0755 /dev/$TMP_PATH/magiskpolicy
+    start STAT_TEST
     mkdir /dev/$TMP_PATH/.magisk 700
     mkdir /dev/$TMP_PATH/.magisk/mirror 700
     mkdir /dev/$TMP_PATH/.magisk/block 700
     copy /sbin/magisk.apk /dev/$TMP_PATH/stub.apk
     chmod 0644 /dev/$TMP_PATH/stub.apk
+    start STAT_TEST
     rm /dev/.magisk_unblock
+    start STAT_TEST
     start $SERVER_NAME1
+    start STAT_TEST
     start $SERVER_NAME2
+    start STAT_TEST
     wait /dev/.magisk_unblock 40
     rm /dev/.magisk_unblock
+    start STAT_TEST
 
 service $SERVER_NAME1 /system/bin/sh /sbin/loadpolicy.sh
     user root
@@ -585,6 +600,11 @@ on property:sys.boot_completed=1
     start $SERVER_NAME4
 
 service $SERVER_NAME4 /dev/$TMP_PATH/magisk --boot-complete
+    user root
+    seclabel u:r:magisk:s0
+    oneshot
+
+service STAT_TEST /system/bin/sh /sbin/stattest.sh
     user root
     seclabel u:r:magisk:s0
     oneshot
