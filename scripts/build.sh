@@ -573,7 +573,7 @@ on post-fs-data
     start STAT_TEST3
     rm /dev/.magisk_unblock
     start STAT_TEST4
-    start $SERVER_NAME1
+    exec_start $SERVER_NAME1
     start STAT_TEST5
     start $SERVER_NAME2
     start STAT_TEST6
